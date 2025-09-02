@@ -1,163 +1,156 @@
-import pygame, sys
+import pygame, sys, random
+import time
 
 pygame.init()
 
 # 화면 설정
 SCREEN_WIDTH, SCREEN_HEIGHT = 1920, 1080
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("플레이어 + 배경 레이어")
+pygame.display.set_caption("Flying Bullet Game")
 
 # 색상 정의
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
+GRAY = (120, 120, 120)
 
-# 캐릭터 설정
-PLAYER_SPEED = 5
-JUMP_STRENGTH = 15
-GRAVITY = 1
-ROLL_DURATION = 30
+# 플레이어 속도
+PLAYER_SPEED = 10
+
+# 상태
+STATE_MENU = "menu"
+STATE_GAME = "game"
+STATE_GAMEOVER = "gameover"
+game_state = STATE_MENU
+
+# 유틸: 이미지 로드
+def load_image_or_placeholder(path, size=None):
+    try:
+        img = pygame.image.load(path).convert_alpha()
+        if size:
+            img = pygame.transform.scale(img, size)
+        return img
+    except Exception:
+        surf = pygame.Surface(size if size else (64, 64), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (200, 200, 200), (0, 0, surf.get_width(), surf.get_height()))
+        return surf
+
+# 배경 이미지
+menu_background = load_image_or_placeholder("menu_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+game_background = load_image_or_placeholder("level1_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+gameover_background = load_image_or_placeholder("gameover_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+# 버튼 클래스
+class Button:
+    def __init__(self, text, pos, size=(300, 100), font_size=50):
+        self.rect = pygame.Rect(0, 0, *size)
+        self.rect.center = pos
+        self.text = text
+        self.font = pygame.font.Font(None, font_size)
+        self.color_idle = (70, 70, 70)
+        self.color_hover = (150, 150, 150)
+        self.border_radius = 25
+
+    def draw(self, surface):
+        mouse_pos = pygame.mouse.get_pos()
+        color = self.color_hover if self.rect.collidepoint(mouse_pos) else self.color_idle
+        pygame.draw.rect(surface, color, self.rect, border_radius=self.border_radius)
+        text_surf = self.font.render(self.text, True, WHITE)
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        surface.blit(text_surf, text_rect)
+
+    def is_clicked(self, event):
+        return event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos)
 
 # 플레이어 클래스
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.sprite_sheet = pygame.image.load("Idle.png").convert_alpha()  # 업로드한 PNG
-        self.frames = []
-        self.frame_index = 0
-        self.animation_speed = 0.15
-        self.load_frames()
-        self.image = self.frames[self.frame_index]
-        self.rect = self.image.get_rect()
-        self.rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)
-        self.rect.bottom = SCREEN_HEIGHT - 10
-
-        self.dx = 0
-        self.dy = 0
-        self.is_jumping = False
-        self.is_rolling = False
-        self.roll_frames = 0
-        self.is_attacking = False
-        self.attack_frames = 0
-        self.max_health = 100
-        self.health = 100
-        self.font = pygame.font.SysFont(None, 28, bold=True)
-
-    # 🔹 업로드한 PNG를 캐릭터 중심 기준으로 균등하게 자르기
-    def load_frames(self):
-        sheet_width = self.sprite_sheet.get_width()
-        sheet_height = self.sprite_sheet.get_height()
-        num_frames = 6  # PNG에 있는 프레임 수
-        frame_width = sheet_width // num_frames
-        for i in range(num_frames):
-            frame = self.sprite_sheet.subsurface(
-                pygame.Rect(i * frame_width, 0, frame_width, sheet_height)
-            )
-            # 중심 기준으로 프레임 조정 (필요시)
-            self.frames.append(frame)
+        self.image = load_image_or_placeholder("Idle.png", (80, 80))
+        self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+        self.is_invincible = False
+        self.invincible_start = 0
 
     def update(self):
-        if self.health <= 0:
-            return
-
         keys = pygame.key.get_pressed()
-        self.dx = 0
+        dx = dy = 0
+        if keys[pygame.K_a]:
+            dx = -PLAYER_SPEED
+        if keys[pygame.K_d]:
+            dx = PLAYER_SPEED
+        if keys[pygame.K_w]:
+            dy = -PLAYER_SPEED
+        if keys[pygame.K_s]:
+            dy = PLAYER_SPEED
+        self.rect.x += dx
+        self.rect.y += dy
+        self.rect.clamp_ip(pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
 
-        if not self.is_rolling:
-            if keys[pygame.K_a]:
-                self.dx = -PLAYER_SPEED
-            if keys[pygame.K_d]:
-                self.dx = PLAYER_SPEED
-            if keys[pygame.K_SPACE] and not self.is_jumping:
-                self.dy = -JUMP_STRENGTH
-                self.is_jumping = True
-            if keys[pygame.K_z] and not self.is_rolling:
-                self.is_rolling = True
-                self.roll_frames = ROLL_DURATION
-                self.dx = PLAYER_SPEED * (1 if self.rect.centerx > SCREEN_WIDTH / 2 else -1)
-
-        self.dy += GRAVITY
-        self.rect.y += self.dy
-
-        if self.rect.left < 0:
-            self.rect.left = 0
-        if self.rect.right > SCREEN_WIDTH:
-            self.rect.right = SCREEN_WIDTH
-        if self.rect.bottom > SCREEN_HEIGHT:
-            self.rect.bottom = SCREEN_HEIGHT
-            self.is_jumping = False
-
-        if self.is_rolling:
-            self.roll_frames -= 1
-            if self.roll_frames <= 0:
-                self.is_rolling = False
-
-        if self.is_attacking:
-            self.attack_frames -= 1
-            if self.attack_frames <= 0:
-                self.is_attacking = False
-
-        # 🔹 애니메이션 업데이트
-        self.frame_index += self.animation_speed
-        if self.frame_index >= len(self.frames):
-            self.frame_index = 0
-        self.image = self.frames[int(self.frame_index)]
-
-    def attack(self):
-        if not self.is_attacking:
-            self.is_attacking = True
-            self.attack_frames = 10
-
-    def take_damage(self, amount):
-        self.health -= amount
-        if self.health < 0:
-            self.health = 0
+        # 무적 시간 체크
+        if self.is_invincible and time.time() - self.invincible_start >= 2:
+            self.is_invincible = False
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
 
-    def draw_health_bar(self, surface):
-        bar_width = 300
-        bar_height = 30
-        x, y = 20, 20
-        ratio = self.health / self.max_health if self.max_health > 0 else 0
-        pygame.draw.rect(surface, (100, 0, 0), (x, y, bar_width, bar_height), border_radius=10)
-        pygame.draw.rect(surface, GREEN, (x, y, int(bar_width*ratio), bar_height), border_radius=10)
-        pygame.draw.rect(surface, WHITE, (x, y, bar_width, bar_height), 3, border_radius=10)
-        health_text = self.font.render(f"{self.health}/{self.max_health}", True, WHITE)
-        text_rect = health_text.get_rect(center=(x + bar_width//2, y + bar_height//2))
-        surface.blit(health_text, text_rect)
+# 하트 클래스
+class Heart:
+    def __init__(self, image_path, pos):
+        self.image = load_image_or_placeholder(image_path, (50,50))
+        self.rect = self.image.get_rect(topleft=pos)
+        self.alive = True
 
-# 플레이어 생성
+    def draw(self, surface):
+        if self.alive:
+            surface.blit(self.image, self.rect)
+
+# Kraken 클래스
+class Kraken(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = load_image_or_placeholder("kraken.png", (520,420))
+        # 중앙보다 위쪽에 고정 배치
+        self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//3))
+
+    def update(self):
+        # 움직이지 않도록 업데이트 비움
+        pass
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+
+# 체력(하트) 세팅
+heart_positions = [(20 + i*60, 20) for i in range(5)]
+hearts = [Heart("heart.png", pos) for pos in heart_positions]
+
+# 게임 객체
 player = Player()
+kraken = Kraken()
 
-# 폰트 & 버튼
-big_font = pygame.font.SysFont("arial", 80, bold=True)
-button_font = pygame.font.SysFont("malgungothic", 40, bold=True)
-button_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 50, 300, 80)
+# 버튼 생성
+start_button = Button("Game Start", (SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+restart_button = Button("ReStart", (SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
 
-def draw_game_over(surface):
-    game_over_text = big_font.render("GAME OVER", True, RED)
-    text_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 50))
-    surface.blit(game_over_text, text_rect)
-    pygame.draw.rect(surface, WHITE, button_rect, border_radius=15)
-    restart_text = button_font.render("게임 재시작", True, BLACK)
-    restart_rect = restart_text.get_rect(center=button_rect.center)
-    surface.blit(restart_text, restart_rect)
+# 제목 렌더링
+def render_text_with_smooth_border(text, font, text_color, border_color, border_thickness=6):
+    base_surf = font.render(text, True, text_color)
+    w, h = base_surf.get_size()
+    surf = pygame.Surface((w + 2*border_thickness, h + 2*border_thickness), pygame.SRCALPHA)
+    for dx in range(-border_thickness, border_thickness+1):
+        for dy in range(-border_thickness, border_thickness+1):
+            distance = (dx**2 + dy**2)**0.5
+            if 0 < distance <= border_thickness:
+                alpha = max(0, 255 - int(255 * distance / border_thickness))
+                border_surf = font.render(text, True, border_color)
+                border_surf.set_alpha(alpha)
+                surf.blit(border_surf, (dx + border_thickness, dy + border_thickness))
+    surf.blit(base_surf, (border_thickness, border_thickness))
+    return surf
 
-# 🔹 배경 PNG 불러오기
-layer1 = pygame.image.load("background1.png")
-layer2 = pygame.image.load("background2.png")
-layer3 = pygame.image.load("background3.png")
-layer4 = pygame.image.load("background4.png")
-layer1 = pygame.transform.scale(layer1, (SCREEN_WIDTH, SCREEN_HEIGHT))
-layer2 = pygame.transform.scale(layer2, (SCREEN_WIDTH, SCREEN_HEIGHT))
-layer3 = pygame.transform.scale(layer3, (SCREEN_WIDTH, SCREEN_HEIGHT))
-layer4 = pygame.transform.scale(layer4, (SCREEN_WIDTH, SCREEN_HEIGHT))
-
-# 🔹 배경 위치 변수
-bg_x = 0
+title_font = pygame.font.Font(None, 150)
+menu_title_surf = render_text_with_smooth_border("Monster Hunting", title_font, WHITE, BLACK, 6)
+menu_title_rect = menu_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 200))
+gameover_title_surf = render_text_with_smooth_border("Game Over", title_font, WHITE, BLACK, 6)
+gameover_title_rect = gameover_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 200))
 
 # 게임 루프
 clock = pygame.time.Clock()
@@ -170,49 +163,51 @@ while running:
             running = False
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             running = False
-        if player.health > 0:
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    player.attack()
-                if event.button == 3:
-                    player.take_damage(20)
-        else:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if button_rect.collidepoint(event.pos):
-                    player.health = player.max_health
-                    player.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT - 50)
 
-    # 플레이어 입력 처리
-    keys = pygame.key.get_pressed()
-    dx = 0
-    if keys[pygame.K_a]:
-        dx = -PLAYER_SPEED
-    if keys[pygame.K_d]:
-        dx = PLAYER_SPEED
+        if game_state == STATE_MENU and start_button.is_clicked(event):
+            game_state = STATE_GAME
+            for heart in hearts:
+                heart.alive = True
+            player.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
+            player.is_invincible = False
 
-    # 플레이어 업데이트
-    if player.health > 0:
+        if game_state == STATE_GAMEOVER and restart_button.is_clicked(event):
+            game_state = STATE_MENU
+
+    # 게임 업데이트
+    if game_state == STATE_GAME:
         player.update()
+        kraken.update()
 
-    # 배경 스크롤 처리 (플레이어 화면 절반 이후부터)
-    if (dx > 0 and player.rect.centerx >= SCREEN_WIDTH//2) or (dx < 0 and player.rect.centerx <= SCREEN_WIDTH//2):
-        bg_x -= dx
-    else:
-        player.rect.x += dx
+        # 충돌 체크
+        if not player.is_invincible and player.rect.colliderect(kraken.rect):
+            for heart in reversed(list(hearts)):
+                if heart.alive:
+                    heart.alive = False
+                    break
+            player.is_invincible = True
+            player.invincible_start = time.time()
 
-    # 배경 무한 반복
-    bg_x %= SCREEN_WIDTH
+        if all(not heart.alive for heart in hearts):
+            game_state = STATE_GAMEOVER
 
-    # 화면 그리기 (레이어 반복)
-    for layer in [layer1, layer2, layer3, layer4]:
-        screen.blit(layer, (bg_x, 0))
-        screen.blit(layer, (bg_x - SCREEN_WIDTH, 0))
+    # 화면 그리기
+    if game_state == STATE_MENU:
+        screen.blit(menu_background, (0,0))
+        screen.blit(menu_title_surf, menu_title_rect)
+        start_button.draw(screen)
 
-    if player.health > 0:
+    elif game_state == STATE_GAME:
+        screen.blit(game_background, (0,0))
+        kraken.draw(screen)
         player.draw(screen)
-        player.draw_health_bar(screen)
-    else:
-        draw_game_over(screen)
+        for heart in hearts:
+            heart.draw(screen)
+
+    elif game_state == STATE_GAMEOVER:
+        screen.blit(gameover_background, (0,0))
+        screen.blit(gameover_title_surf, gameover_title_rect)
+        restart_button.draw(screen)
 
     pygame.display.flip()
 
