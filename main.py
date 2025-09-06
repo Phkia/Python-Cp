@@ -88,7 +88,7 @@ class Bullet(pygame.sprite.Sprite):
         if self.rect.bottom < 0:
             self.kill()
 
-# 적 탄막(보스 탄)
+# 보스 탄막
 class EnemyBullet(pygame.sprite.Sprite):
     def __init__(self, x, y, vx, vy, image_path="enemy_bullet.png", size_x=25, size_y=25):
         super().__init__()
@@ -157,7 +157,7 @@ class Heart:
         if self.alive:
             surface.blit(self.image,self.rect)
 
-# 보스0 (Stage1)
+# 보스1
 class Boss0(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -183,7 +183,7 @@ class Boss0(pygame.sprite.Sprite):
         pygame.draw.rect(surface, GREEN, (x,y,current_width,bar_height))
         pygame.draw.rect(surface, BLACK, (x,y,bar_width,bar_height),3)
 
-# 보스1 (Stage2, 더 어려운 탄막)
+# 보스2
 class Boss1(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -195,7 +195,7 @@ class Boss1(pygame.sprite.Sprite):
         self.direction = 1
         self.shoot_angle = 0.0
         self.last_spiral_time = 0.0
-        self.spiral_interval = 0.35  # ← 기존 0.25 → 0.35로 늘림 (조금 쉬워짐)
+        self.spiral_interval = 0.35 
         self.last_fall_time = 0.0
         self.fall_interval = 1.2
 
@@ -203,12 +203,12 @@ class Boss1(pygame.sprite.Sprite):
         self.rect.x += self.speed * self.direction
         if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
             self.direction *= -1
-        self.shoot_angle += 0.12  # ← 기존 0.15 → 0.12로 살짝 느리게 회전
+        self.shoot_angle += 0.12 
 
     def spiral_attack(self, bullets_group):
         for i in range(8):
             angle = self.shoot_angle + i * (math.pi*2/8)
-            vx = 5.0 * math.cos(angle)  # ← 기존 5.5 → 5.0로 조금 느려짐
+            vx = 5.0 * math.cos(angle)  
             vy = 5.0 * math.sin(angle)
             bullets_group.add(EnemyBullet(self.rect.centerx, self.rect.centery, vx, vy))
 
@@ -265,7 +265,7 @@ resume_button = Button("계속", (SCREEN_WIDTH//2, center_y+button_spacing))
 pause_menu_button = Button("메인 메뉴", (SCREEN_WIDTH//2, center_y))
 quit_pause_button = Button("종료", (SCREEN_WIDTH//2, center_y+button_spacing))
 
-# 텍스트(외곽선)
+# 텍스트
 def render_text_with_smooth_border(text, font, text_color, border_color, border_thickness=6):
     base_surf = font.render(text, True, text_color)
     w,h = base_surf.get_size()
@@ -416,7 +416,7 @@ while running:
 
         pygame.display.flip()
 
-    # --- Stage1 ---
+    # Stage1 
     elif game_state == STATE_STAGE1:
         screen.blit(stage1_background, (0,0))
         player.update()
@@ -482,7 +482,7 @@ while running:
         for heart in hearts: heart.draw(screen)
         pygame.display.flip()
 
-    # --- Stage2 ---
+    # Stage2 
     elif game_state == STATE_STAGE2:
         screen.blit(stage2_background, (0,0))
         player.update()
