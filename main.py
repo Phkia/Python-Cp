@@ -282,15 +282,15 @@ def render_text_with_smooth_border(text, font, text_color, border_color, border_
     return surf
 
 title_font = pygame.font.SysFont("malgungothic",90)
-menu_title_surf = render_text_with_smooth_border("우주 괴물 사냥", title_font, WHITE, BLACK, 6)
+menu_title_surf = render_text_with_smooth_border("Monster Hunt : Space", title_font, WHITE, BLACK, 6)
 menu_title_rect = menu_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
 
 gameover_font = pygame.font.SysFont("malgungothic",150)
-gameover_title_surf = render_text_with_smooth_border("게임 오버", gameover_font, WHITE, BLACK, 6)
+gameover_title_surf = render_text_with_smooth_border("Game Over", gameover_font, WHITE, BLACK, 6)
 gameover_title_rect = gameover_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
 
 victory_font = pygame.font.SysFont("malgungothic",110)
-win_title_surf = render_text_with_smooth_border("승리!", victory_font, WHITE, BLACK, 6)
+win_title_surf = render_text_with_smooth_border("Victory!", victory_font, WHITE, BLACK, 6)
 win_title_rect = win_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
 
 # 타이머
@@ -568,8 +568,13 @@ while running:
         control_font = pygame.font.SysFont("malgungothic",40)
         move_text = render_text_with_smooth_border("이동 : W, A, S, D", control_font, WHITE, BLACK, 4)
         pause_text = render_text_with_smooth_border("정지 : ESC", control_font, WHITE, BLACK, 4)
-        screen.blit(move_text,(50, SCREEN_HEIGHT-120))
-        screen.blit(pause_text,(50, SCREEN_HEIGHT-70))
+        screen.blit(move_text,(10, SCREEN_HEIGHT-120))
+        screen.blit(pause_text,(10, SCREEN_HEIGHT-70))
+
+        # 이미지 출처 텍스트 (우측 하단)
+        source_text = render_text_with_smooth_border("이미지 출처 : freepik.com", control_font, WHITE, BLACK, 4)
+        source_rect = source_text.get_rect(bottomright=(SCREEN_WIDTH-10, SCREEN_HEIGHT-10))
+        screen.blit(source_text, source_rect)
 
         pygame.display.flip()
 
