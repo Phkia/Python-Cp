@@ -3,9 +3,9 @@ import pygame, sys, time, random, math
 pygame.init()
 
 # 화면 설정
-SCREEN_WIDTH, SCREEN_HEIGHT = 750, 1000
+SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 720
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Flying Bullet Game")
+pygame.display.set_caption("Monster Hunt : Space")
 
 # 색상 정의
 WHITE = (255, 255, 255)
@@ -14,20 +14,23 @@ RED = (200, 0, 0)
 GREEN = (0, 200, 0)
 
 # 플레이어 속도
-PLAYER_SPEED = 7.5
+PLAYER_SPEED = 9
 
 # 상태
 STATE_MENU = "menu"
 STATE_COUNTDOWN = "countdown"
-STATE_GAME = "game"
+STATE_STAGE1 = "stage1"
+STATE_STAGE2 = "stage2"
 STATE_GAMEOVER = "gameover"
 STATE_WIN = "win"
 STATE_PAUSE = "pause"
 game_state = STATE_MENU
 
 countdown_start_time = 0
-countdown_number = 3  # 카운트다운 숫자
-last_count_update = 0  # 마지막 업데이트 시간
+countdown_number = 3
+last_count_update = 0
+next_stage = STATE_STAGE1
+prev_state_on_pause = STATE_STAGE1
 
 # 이미지 로드
 def load_image_or_placeholder(path, size=None):
@@ -42,10 +45,11 @@ def load_image_or_placeholder(path, size=None):
         return surf
 
 # 배경
-menu_background = load_image_or_placeholder("menu_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
-game_background = load_image_or_placeholder("level1_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
-gameover_background = load_image_or_placeholder("gameover_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
-win_background = load_image_or_placeholder("win_background.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+menu_background = load_image_or_placeholder("mainmenu.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+stage1_background = load_image_or_placeholder("stage1.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+stage2_background = load_image_or_placeholder("stage2.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+gameover_background = load_image_or_placeholder("gameover.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
+win_background = load_image_or_placeholder("win.png", (SCREEN_WIDTH, SCREEN_HEIGHT))
 
 # 버튼
 class Button:
@@ -53,7 +57,7 @@ class Button:
         self.rect = pygame.Rect(0,0,*size)
         self.rect.center = pos
         self.text = text
-        self.font = pygame.font.Font(None, font_size)
+        self.font = pygame.font.SysFont("malgungothic", font_size)
         self.color_idle = (220,220,220)
         self.color_hover = (255,255,255)
         self.border_radius = 25
@@ -69,13 +73,13 @@ class Button:
     def is_clicked(self, event):
         return event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos)
 
-# 총알
+# 플레이어 탄
 class Bullet(pygame.sprite.Sprite):
     def __init__(self,x,y):
         super().__init__()
-        self.image = load_image_or_placeholder("bullet.png",(30,60))
+        self.image = load_image_or_placeholder("bullet.png",(20,40))
         self.rect = self.image.get_rect(center=(x,y))
-        self.speed = -10
+        self.speed = -20
         self.damage = 5
         self.active = True
 
@@ -84,30 +88,24 @@ class Bullet(pygame.sprite.Sprite):
         if self.rect.bottom < 0:
             self.kill()
 
-# 적 탄막
+# 적 탄막(보스 탄)
 class EnemyBullet(pygame.sprite.Sprite):
-    def __init__(self, x, y, angle, image_path="enemy_bullet.png", size_x=20, size_y=35):
+    def __init__(self, x, y, vx, vy, image_path="enemy_bullet.png", size_x=25, size_y=25):
         super().__init__()
-        # 이미지 로드
         try:
             self.image_orig = pygame.image.load(image_path).convert_alpha()
             self.image_orig = pygame.transform.scale(self.image_orig, (size_x, size_y))
         except Exception:
-            # 이미지 없으면 정사각형 대체
             self.image_orig = pygame.Surface((size_x, size_y), pygame.SRCALPHA)
             pygame.draw.rect(self.image_orig, (255,50,50), (0,0,size_x,size_y))
-
         self.image = self.image_orig.copy()
         self.rect = self.image.get_rect(center=(x, y))
-        speed = 5
-        self.vx = speed * math.cos(angle)
-        self.vy = speed * math.sin(angle)
-        self.gravity = 0.15
+        self.vx = vx
+        self.vy = vy
         self.angle = 0
         self.rotation_speed = random.uniform(-5,5)
 
     def update(self):
-        self.vy += self.gravity
         self.rect.x += int(self.vx)
         self.rect.y += int(self.vy)
         self.angle += self.rotation_speed
@@ -120,7 +118,7 @@ class EnemyBullet(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.image = load_image_or_placeholder("Idle.png",(60,60))
+        self.image = load_image_or_placeholder("player.png",(40,50))
         self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2+200))
         self.is_invincible = False
         self.invincible_start = 0
@@ -141,7 +139,7 @@ class Player(pygame.sprite.Sprite):
 
     def shoot(self, bullets_group):
         now = time.time()
-        if now - self.last_shot_time >= 2:
+        if now - self.last_shot_time >= 1.5:
             bullet = Bullet(self.rect.centerx, self.rect.top)
             bullets_group.add(bullet)
             self.last_shot_time = now
@@ -149,7 +147,7 @@ class Player(pygame.sprite.Sprite):
     def draw(self, surface):
         surface.blit(self.image, self.rect)
 
-# 하트
+# 하트(목숨 UI)
 class Heart:
     def __init__(self,image_path,pos):
         self.image = load_image_or_placeholder(image_path,(50,50))
@@ -159,29 +157,73 @@ class Heart:
         if self.alive:
             surface.blit(self.image,self.rect)
 
-# 크라켄
-class Kraken(pygame.sprite.Sprite):
+# 보스0 (Stage1)
+class Boss0(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.image = load_image_or_placeholder("kraken.png",(500,300))
-        self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2.1, SCREEN_HEIGHT//4.4))
-        self.max_health = 80
-        self.health = 80
-        self.font = pygame.font.Font(None,40)
+        self.image = load_image_or_placeholder("boss0.png",(170,200))
+        self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//4))
+        self.max_health = 70
+        self.health = 70
+        self.speed = 4
+        self.direction = 1
+
     def update(self):
-        pass
+        self.rect.x += self.speed * self.direction
+        if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
+            self.direction *= -1
+
     def draw(self,surface):
         surface.blit(self.image,self.rect)
         bar_width, bar_height = 400,25
         x = (SCREEN_WIDTH-bar_width)//2
-        y = SCREEN_HEIGHT-bar_height-20
+        y = 20
         pygame.draw.rect(surface, RED, (x,y,bar_width,bar_height))
         current_width = int(bar_width*(self.health/self.max_health))
         pygame.draw.rect(surface, GREEN, (x,y,current_width,bar_height))
         pygame.draw.rect(surface, BLACK, (x,y,bar_width,bar_height),3)
-        text_surf = self.font.render(f"{self.health}/{self.max_health}", True, WHITE)
-        text_rect = text_surf.get_rect(center=(SCREEN_WIDTH//2, y+bar_height//2))
-        surface.blit(text_surf, text_rect)
+
+# 보스1 (Stage2, 더 어려운 탄막)
+class Boss1(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = load_image_or_placeholder("boss1.png",(200,220))
+        self.rect = self.image.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//4))
+        self.max_health = 100
+        self.health = 100
+        self.speed = 5
+        self.direction = 1
+        self.shoot_angle = 0.0
+        self.last_spiral_time = 0.0
+        self.spiral_interval = 0.35  # ← 기존 0.25 → 0.35로 늘림 (조금 쉬워짐)
+        self.last_fall_time = 0.0
+        self.fall_interval = 1.2
+
+    def update(self):
+        self.rect.x += self.speed * self.direction
+        if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
+            self.direction *= -1
+        self.shoot_angle += 0.12  # ← 기존 0.15 → 0.12로 살짝 느리게 회전
+
+    def spiral_attack(self, bullets_group):
+        for i in range(8):
+            angle = self.shoot_angle + i * (math.pi*2/8)
+            vx = 5.0 * math.cos(angle)  # ← 기존 5.5 → 5.0로 조금 느려짐
+            vy = 5.0 * math.sin(angle)
+            bullets_group.add(EnemyBullet(self.rect.centerx, self.rect.centery, vx, vy))
+
+    def random_fall_attack(self, bullets_group):
+        pass  # 제거
+
+    def draw(self,surface):
+        surface.blit(self.image,self.rect)
+        bar_width, bar_height = 450,25
+        x = (SCREEN_WIDTH-bar_width)//2
+        y = 20
+        pygame.draw.rect(surface, RED, (x,y,bar_width,bar_height))
+        current_width = int(bar_width*(self.health/self.max_health))
+        pygame.draw.rect(surface, GREEN, (x,y,current_width,bar_height))
+        pygame.draw.rect(surface, BLACK, (x,y,bar_width,bar_height),3)
 
 # 폭죽
 class FireworkParticle:
@@ -206,7 +248,8 @@ hearts = [Heart("heart.png", pos) for pos in heart_positions]
 
 # 게임 객체
 player = Player()
-kraken = Kraken()
+boss0 = Boss0()
+boss1 = Boss1()
 bullets = pygame.sprite.Group()
 enemy_bullets = pygame.sprite.Group()
 particles = []
@@ -214,15 +257,15 @@ particles = []
 # 버튼
 button_spacing = 120
 center_y = SCREEN_HEIGHT//2
-start_button = Button("Game Start",(SCREEN_WIDTH//2, center_y-button_spacing//2))
-quit_main_button = Button("Quit Game",(SCREEN_WIDTH//2, center_y+button_spacing//2))
-restart_button = Button("Restart",(SCREEN_WIDTH//2, center_y-button_spacing//2))
-quit_game_button = Button("Quit Game",(SCREEN_WIDTH//2, center_y+button_spacing//2))
-resume_button = Button("Resume",(SCREEN_WIDTH//2, center_y-button_spacing))
-pause_menu_button = Button("Main Menu",(SCREEN_WIDTH//2, center_y))
-quit_pause_button = Button("Quit Game",(SCREEN_WIDTH//2, center_y+button_spacing))
+start_button = Button("시작", (SCREEN_WIDTH//2, center_y-button_spacing//2))
+quit_main_button = Button("종료", (SCREEN_WIDTH//2, center_y+button_spacing//2))
+restart_button = Button("재시작", (SCREEN_WIDTH//2, center_y-button_spacing//2))
+quit_game_button = Button("종료", (SCREEN_WIDTH//2, center_y+button_spacing//2))
+resume_button = Button("계속", (SCREEN_WIDTH//2, center_y+button_spacing))
+pause_menu_button = Button("메인 메뉴", (SCREEN_WIDTH//2, center_y))
+quit_pause_button = Button("종료", (SCREEN_WIDTH//2, center_y+button_spacing))
 
-# 텍스트 렌더링
+# 텍스트(외곽선)
 def render_text_with_smooth_border(text, font, text_color, border_color, border_thickness=6):
     base_surf = font.render(text, True, text_color)
     w,h = base_surf.get_size()
@@ -238,21 +281,22 @@ def render_text_with_smooth_border(text, font, text_color, border_color, border_
     surf.blit(base_surf,(border_thickness, border_thickness))
     return surf
 
-title_font = pygame.font.Font(None,100)
-menu_title_surf = render_text_with_smooth_border("Monster Hunt : Ocean", title_font, WHITE, BLACK, 6)
+title_font = pygame.font.SysFont("malgungothic",90)
+menu_title_surf = render_text_with_smooth_border("우주 괴물 사냥", title_font, WHITE, BLACK, 6)
 menu_title_rect = menu_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
-gameover_font = pygame.font.Font(None,150)
-gameover_title_surf = render_text_with_smooth_border("Game Over", gameover_font, WHITE, BLACK, 6)
+
+gameover_font = pygame.font.SysFont("malgungothic",150)
+gameover_title_surf = render_text_with_smooth_border("게임 오버", gameover_font, WHITE, BLACK, 6)
 gameover_title_rect = gameover_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
-victory_font = pygame.font.Font(None,150)
-win_title_surf = render_text_with_smooth_border("Victory", victory_font, WHITE, BLACK, 6)
+
+victory_font = pygame.font.SysFont("malgungothic",110)
+win_title_surf = render_text_with_smooth_border("승리!", victory_font, WHITE, BLACK, 6)
 win_title_rect = win_title_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2-200))
 
-# 적 발사 타이머
-enemy_last_shot = 0
+# 타이머
+enemy_last_shot = 0.0
 enemy_shot_delay = 1.5
 
-# 게임 루프
 clock = pygame.time.Clock()
 running = True
 while running:
@@ -263,13 +307,15 @@ while running:
 
         # ESC 처리
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if game_state == STATE_GAME:
+            if game_state in (STATE_STAGE1, STATE_STAGE2):
+                prev_state_on_pause = game_state
                 game_state = STATE_PAUSE
             elif game_state == STATE_PAUSE:
                 game_state = STATE_COUNTDOWN
                 countdown_start_time = time.time()
                 countdown_number = 3
                 last_count_update = 0
+                next_stage = prev_state_on_pause
 
         # 메뉴 버튼
         if game_state == STATE_MENU:
@@ -281,10 +327,15 @@ while running:
                 for heart in hearts: heart.alive=True
                 player.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//2+200)
                 player.is_invincible=False
-                kraken.health = kraken.max_health
+                boss0.health = boss0.max_health
+                boss1.health = boss1.max_health
                 bullets.empty()
                 enemy_bullets.empty()
                 particles.clear()
+                enemy_last_shot = 0.0
+                boss1.last_spiral_time = 0.0
+                boss1.last_fall_time = 0.0
+                next_stage = STATE_STAGE1
             if quit_main_button.is_clicked(event):
                 running=False
 
@@ -317,60 +368,83 @@ while running:
             if quit_pause_button.is_clicked(event):
                 running=False
 
-    # COUNTDOWN 처리
+        # COUNTDOWN 처리
     if game_state == STATE_COUNTDOWN:
+        # Stage2라면 카운트다운 시작 전에 위치 초기화
+        if next_stage == STATE_STAGE2 and not hasattr(player, 'stage2_reset_done'):
+            player.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 200)
+            boss1.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//4)
+            for heart in hearts:
+                heart.alive = True
+            player.is_invincible = False
+            # 초기화 완료 표시
+            player.stage2_reset_done = True
+
         elapsed = time.time() - countdown_start_time
         new_count = 3 - int(elapsed)
-
         if new_count != countdown_number:
             countdown_number = new_count
             last_count_update = time.time()
 
-        screen.blit(game_background, (0,0))
-        kraken.draw(screen)
+        # 배경/보스 미리보기
+        if next_stage == STATE_STAGE1:
+            screen.blit(stage1_background, (0,0))
+            boss0.draw(screen)
+        elif next_stage == STATE_STAGE2:
+            screen.blit(stage2_background, (0,0))
+            boss1.draw(screen)
+
         player.draw(screen)
         bullets.draw(screen)
         enemy_bullets.draw(screen)
         for heart in hearts: heart.draw(screen)
 
         if countdown_number >= 0:
-            font = pygame.font.Font(None, 200)
+            font = pygame.font.SysFont("malgungothic", 200)
             count_surf = render_text_with_smooth_border(str(countdown_number), font, WHITE, BLACK, 8)
             count_rect = count_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
             screen.blit(count_surf, count_rect)
         else:
-            game_state = STATE_GAME
+            # 카운트다운 끝나면 다음 스테이지 시작
+            game_state = next_stage
+            bullets.empty()
+            enemy_bullets.empty()
+            enemy_last_shot = time.time()
+            # Stage2 초기화 완료 플래그 제거
+            if hasattr(player, 'stage2_reset_done'):
+                del player.stage2_reset_done
 
         pygame.display.flip()
 
-    # GAME
-    elif game_state == STATE_GAME:
+    # --- Stage1 ---
+    elif game_state == STATE_STAGE1:
+        screen.blit(stage1_background, (0,0))
         player.update()
         player.shoot(bullets)
         bullets.update()
-        kraken.update()
+        boss0.update()
 
-        # 크라켄 탄막
         now = time.time()
-        if now-enemy_last_shot>enemy_shot_delay:
-            spawn_x=random.randint(100,SCREEN_WIDTH-100)
-            spawn_y=kraken.rect.bottom
+        if now - enemy_last_shot > enemy_shot_delay:
+            spawn_x = boss0.rect.centerx
+            spawn_y = boss0.rect.bottom
             for i in range(12):
-                angle=(2*math.pi/12)*i
-                enemy_bullets.add(EnemyBullet(spawn_x,spawn_y,angle))
-            enemy_last_shot=now
+                angle = (2*math.pi/12)*i
+                vx = 5 * math.cos(angle)
+                vy = 5 * math.sin(angle)
+                enemy_bullets.add(EnemyBullet(spawn_x, spawn_y, vx, vy))
+            enemy_last_shot = now
 
         enemy_bullets.update()
 
         # 충돌 처리
-        if not player.is_invincible and player.rect.colliderect(kraken.rect):
+        if not player.is_invincible and player.rect.colliderect(boss0.rect):
             for heart in reversed(hearts):
                 if heart.alive:
                     heart.alive=False
                     break
             player.is_invincible=True
             player.invincible_start=time.time()
-
         if not player.is_invincible:
             if pygame.sprite.spritecollide(player, enemy_bullets, True):
                 for heart in reversed(hearts):
@@ -380,47 +454,137 @@ while running:
                 player.is_invincible=True
                 player.invincible_start=time.time()
 
+        # 플레이어 탄과 보스 충돌
         for bullet in bullets:
-            if bullet.active and bullet.rect.colliderect(kraken.rect):
-                kraken.health-=bullet.damage
-                bullet.active=False
+            if bullet.active and bullet.rect.colliderect(boss0.rect):
+                boss0.health -= bullet.damage
+                bullet.active = False
 
-        if kraken.health<=0:
-            kraken.health=0
-            game_state=STATE_WIN
+        # 스테이지 클리어/실패 판정
+        if boss0.health <= 0:
+            boss0.health = 0
+            next_stage = STATE_STAGE2
+            game_state = STATE_COUNTDOWN
+            countdown_start_time = time.time()
+            countdown_number = 3
+            last_count_update = 0
+            bullets.empty()
+            enemy_bullets.empty()
+            player.is_invincible=False
 
         if all(not heart.alive for heart in hearts):
             game_state=STATE_GAMEOVER
 
-    # WIN 폭죽
+        boss0.draw(screen)
+        player.draw(screen)
+        bullets.draw(screen)
+        enemy_bullets.draw(screen)
+        for heart in hearts: heart.draw(screen)
+        pygame.display.flip()
+
+    # --- Stage2 ---
+    elif game_state == STATE_STAGE2:
+        screen.blit(stage2_background, (0,0))
+        player.update()
+        player.shoot(bullets)
+        bullets.update()
+        boss1.update()
+
+        now = time.time()
+        if now - boss1.last_spiral_time >= boss1.spiral_interval:
+            boss1.spiral_attack(enemy_bullets)
+            boss1.last_spiral_time = now
+        if now - boss1.last_fall_time >= boss1.fall_interval:
+            boss1.random_fall_attack(enemy_bullets)
+            boss1.last_fall_time = now
+
+        enemy_bullets.update()
+
+        # 충돌 처리
+        if not player.is_invincible and player.rect.colliderect(boss1.rect):
+            for heart in reversed(hearts):
+                if heart.alive:
+                    heart.alive=False
+                    break
+            player.is_invincible=True
+            player.invincible_start=time.time()
+        if not player.is_invincible:
+            if pygame.sprite.spritecollide(player, enemy_bullets, True):
+                for heart in reversed(hearts):
+                    if heart.alive:
+                        heart.alive=False
+                        break
+                player.is_invincible=True
+                player.invincible_start=time.time()
+
+        # 플레이어 탄과 보스 충돌
+        for bullet in bullets:
+            if bullet.active and bullet.rect.colliderect(boss1.rect):
+                boss1.health -= bullet.damage
+                bullet.active = False
+
+        # 스테이지 클리어/실패 판정
+        if boss1.health <= 0:
+            boss1.health = 0
+            game_state = STATE_WIN
+            bullets.empty()
+            enemy_bullets.empty()
+
+        if all(not heart.alive for heart in hearts):
+            game_state=STATE_GAMEOVER
+
+        boss1.draw(screen)
+        player.draw(screen)
+        bullets.draw(screen)
+        enemy_bullets.draw(screen)
+        for heart in hearts: heart.draw(screen)
+        pygame.display.flip()
+
+    # 승리 상태
     if game_state==STATE_WIN:
         if random.random()<0.2:
             particles.append(FireworkParticle(random.randint(100,SCREEN_WIDTH-100), SCREEN_HEIGHT-50))
 
-    # 파티클 업데이트
-    for particle in particles[:]:
-        particle.update()
-        if particle.life<=0:
-            particles.remove(particle)
+        screen.blit(win_background,(0,0))
+        screen.blit(win_title_surf, win_title_rect)
+        restart_button.draw(screen)
+        quit_game_button.draw(screen)
+        for particle in particles[:]:
+            particle.update()
+            if particle.life<=0:
+                particles.remove(particle)
+        for particle in particles:
+            particle.draw(screen)
+        pygame.display.flip()
 
-    # 화면 그리기
+    # 공통 렌더 (메뉴/오버/일시정지)
     if game_state==STATE_MENU:
         screen.blit(menu_background,(0,0))
         screen.blit(menu_title_surf,menu_title_rect)
         start_button.draw(screen)
         quit_main_button.draw(screen)
+
+        # 컨트롤 안내 텍스트 추가
+        control_font = pygame.font.SysFont("malgungothic",40)
+        move_text = render_text_with_smooth_border("이동 : W, A, S, D", control_font, WHITE, BLACK, 4)
+        pause_text = render_text_with_smooth_border("정지 : ESC", control_font, WHITE, BLACK, 4)
+        screen.blit(move_text,(50, SCREEN_HEIGHT-120))
+        screen.blit(pause_text,(50, SCREEN_HEIGHT-70))
+
+        pygame.display.flip()
+
     elif game_state==STATE_GAMEOVER:
         screen.blit(gameover_background,(0,0))
-        screen.blit(gameover_title_surf,gameover_title_rect)
+        screen.blit(gameover_title_surf, gameover_title_rect)
         restart_button.draw(screen)
         quit_game_button.draw(screen)
-    elif game_state==STATE_WIN:
-        screen.blit(win_background,(0,0))
-        screen.blit(win_title_surf,win_title_rect)
-        restart_button.draw(screen)
-        quit_game_button.draw(screen)
-        for particle in particles: particle.draw(screen)
+        pygame.display.flip()
+
     elif game_state==STATE_PAUSE:
+        if prev_state_on_pause == STATE_STAGE1:
+            screen.blit(stage1_background,(0,0))
+        else:
+            screen.blit(stage2_background,(0,0))
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         overlay.set_alpha(180)
         overlay.fill((0,0,0))
@@ -428,15 +592,7 @@ while running:
         resume_button.draw(screen)
         pause_menu_button.draw(screen)
         quit_pause_button.draw(screen)
-    elif game_state==STATE_GAME or game_state==STATE_COUNTDOWN:
-        screen.blit(game_background,(0,0))
-        kraken.draw(screen)
-        player.draw(screen)
-        bullets.draw(screen)
-        enemy_bullets.draw(screen)
-        for heart in hearts: heart.draw(screen)
-
-    pygame.display.flip()
+        pygame.display.flip()
 
 pygame.quit()
 sys.exit()
